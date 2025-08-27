@@ -1,0 +1,31 @@
+{
+  "namespace": "MyApp.Models",
+  "class": "Person",
+  "accessibility": "public",
+  "sealed": false,
+  "usings": [
+    "System.Collections.Generic"
+  ],
+  "properties": [
+    {
+      "name": "Id",
+      "type": "int",
+      "default": 0
+    },
+    {
+      "name": "Name",
+      "type": "string",
+      "default": "Unknown"
+    },
+    {
+      "name": "Email",
+      "type": "string?",
+      "default": null
+    },
+    {
+      "name": "Tags",
+      "type": "List<string>",
+      "defaultExpression": "new List<string>()"
+    }
+  ]
+}
