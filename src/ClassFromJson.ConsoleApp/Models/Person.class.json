@@ -26,6 +26,21 @@
       "name": "Tags",
       "type": "List<string>",
       "defaultExpression": "new List<string>()"
+    },
+    {
+      "name": "Address",
+      "type": "Address",
+      "defaultExpression": "new Address()"
+    },
+    {
+      "name": "Title",
+      "type": "Title",
+      "defaultExpression": "new Title()"
+    },
+    {
+      "name": "Jobs",
+      "type": "List<Job>",
+      "defaultExpression": "new List<Job>()"
     }
   ]
 }

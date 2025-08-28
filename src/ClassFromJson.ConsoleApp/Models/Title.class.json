@@ -1,0 +1,16 @@
+{
+  "namespace": "MyApp.Models",
+  "class": "Title",
+  "properties": [
+    {
+      "name": "Course",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "name": "YearOfCompletion",
+      "type": "int",
+      "default": 0
+    }
+  ]
+}

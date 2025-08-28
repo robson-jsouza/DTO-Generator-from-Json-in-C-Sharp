@@ -1,0 +1,21 @@
+{
+  "namespace": "MyApp.Models",
+  "class": "Job",
+  "properties": [
+    {
+      "name": "Title",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "name": "StartDate",
+      "type": "DateTime?",
+      "default": null
+    },
+    {
+      "name": "EndDate",
+      "type": "DateTime?",
+      "default": null
+    }
+  ]
+}

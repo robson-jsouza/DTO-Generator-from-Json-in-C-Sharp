@@ -9,8 +9,6 @@
     <AdditionalFiles Include="Models\**\*.class.json" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\ClassFromJson.Generator\ClassFromJson.Generator.csproj"
-                      OutputItemType="Analyzer"
-                      ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\ClassFromJson.Generator\ClassFromJson.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
 </Project>
