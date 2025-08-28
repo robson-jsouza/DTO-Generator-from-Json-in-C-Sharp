@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Text;
 
@@ -56,49 +57,46 @@ public sealed class ModelClassGenerator : IIncrementalGenerator
 
     private static ClassSpec Parse(string json, string path)
     {
-        var root = MiniJson.Parse(json) as Dictionary<string, object?>;
-        if (root is null) throw new InvalidOperationException($"Invalid JSON in {path}");
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
 
-        string ns = RequiredString(root, "namespace", path);
-        string className = RequiredString(root, "class", path);
+        string ns = Required(root, "namespace", path);
+        string className = Required(root, "class", path);
 
-        string accessibility = (TryGetString(root, "accessibility") ?? "public").Trim();
-        bool isSealed = TryGetBool(root, "sealed") ?? false;
+        string accessibility = root.TryGetProperty("accessibility", out var accEl)
+            ? accEl.GetString() ?? "public" : "public";
+
+        bool isSealed = root.TryGetProperty("sealed", out var sealedEl) && sealedEl.GetBoolean();
 
         var usings = new List<string> { "System", "System.Collections.Generic" };
-        if (root.TryGetValue("usings", out var usObj) && usObj is List<object?> usList)
+        if (root.TryGetProperty("usings", out var usEl) && usEl.ValueKind == JsonValueKind.Array)
         {
-            foreach (var u in usList)
+            foreach (var u in usEl.EnumerateArray())
             {
-                if (u is string s && !string.IsNullOrWhiteSpace(s)) usings.Add(s);
+                var s = u.GetString();
+                if (!string.IsNullOrWhiteSpace(s)) usings.Add(s!);
             }
         }
-        usings = usings.Distinct(StringComparer.Ordinal).ToList();
+        usings = usings.Distinct().ToList();
 
         var props = new List<PropertySpec>();
-        if (!root.TryGetValue("properties", out var propsObj) || propsObj is not List<object?> propsList)
+        if (!root.TryGetProperty("properties", out var propsEl) || propsEl.ValueKind != JsonValueKind.Array)
             throw new InvalidOperationException($"Missing 'properties' in {path}");
-        foreach (var pObj in propsList)
+
+        foreach (var p in propsEl.EnumerateArray())
         {
-            if (pObj is not Dictionary<string, object?> p)
-                throw new InvalidOperationException($"Each property entry must be an object in {path}");
-
-            string name = RequiredString(p, "name", path);
-            string type = RequiredString(p, "type", path);
-            string propAcc = (GetString(p, "accessibility") ?? "public").Trim();
-
-            bool hasDefaultExpr = p.ContainsKey("defaultExpression");
-            bool hasDefault = p.ContainsKey("default");
+            string name = Required(p, "name", path);
+            string type = Required(p, "type", path);
+            string propAcc = p.TryGetProperty("accessibility", out var pacc) ? (pacc.GetString() ?? "public") : "public";
 
             string? defaultInitializer = null;
-            if (hasDefaultExpr)
+
+            if (p.TryGetProperty("defaultExpression", out var de))
             {
-                defaultInitializer = GetString(p, "defaultExpression");
+                defaultInitializer = de.GetString();
             }
-            else if (hasDefault)
+            else if (p.TryGetProperty("default", out var dv))
             {
-                if (!p.TryGetValue("default", out var dv))
-                    throw new InvalidOperationException($"'default' must be present when specified in {path}");
                 defaultInitializer = FromJsonLiteralToCSharp(dv, type);
             }
 
@@ -108,41 +106,30 @@ public sealed class ModelClassGenerator : IIncrementalGenerator
         return new ClassSpec(ns, className, accessibility, isSealed, usings, props);
     }
 
-    private static string RequiredString(Dictionary<string, object?> dict, string key, string path)
+    private static string Required(JsonElement el, string name, string path)
     {
-        if (!dict.TryGetValue(key, out var v) || v is null) throw new InvalidOperationException($"Missing '{key}' in {path}");
-        var s = v as string;
-        if (string.IsNullOrWhiteSpace(s)) throw new InvalidOperationException($"Empty '{key}' in {path}");
-        return s;
+        if (!el.TryGetProperty(name, out var v) || v.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+            throw new InvalidOperationException($"Missing '{name}' in {path}");
+        var s = v.GetString();
+        if (string.IsNullOrWhiteSpace(s)) throw new InvalidOperationException($"Empty '{name}' in {path}");
+        return s!;
     }
 
-    private static string? TryGetString(Dictionary<string, object?> dict, string key)
-        => dict.TryGetValue(key, out var v) ? v as string : null;
-    private static string? GetString(Dictionary<string, object?> dict, string key)
-        => dict.TryGetValue(key, out var v) ? v as string : null;
-    private static bool? TryGetBool(Dictionary<string, object?> dict, string key)
-        => dict.TryGetValue(key, out var v) ? v as bool? : null;
-
-    private static string FromJsonLiteralToCSharp(object? value, string type)
+    private static string FromJsonLiteralToCSharp(JsonElement value, string type)
     {
-        switch (value)
+        switch (value.ValueKind)
         {
-            case null:
+            case JsonValueKind.String:
+                return ToCSharpStringLiteral(value.GetString() ?? "");
+            case JsonValueKind.Number:
+                return value.GetRawText(); // preserves 123 or 1.23
+            case JsonValueKind.True:
+            case JsonValueKind.False:
+                return value.GetRawText();
+            case JsonValueKind.Null:
                 if (IsNullableTypeString(type)) return "null";
                 if (IsReferenceTypeString(type) && !IsNullableTypeString(type)) return "default!";
                 return "default";
-            case bool b:
-                return b ? "true" : "false";
-            case string s:
-                return ToCSharpStringLiteral(s);
-            case double d:
-                // Preserve integers without .0 when possible
-                if (Math.Abs(d % 1) < double.Epsilon) return ((long)d).ToString();
-                return d.ToString(System.Globalization.CultureInfo.InvariantCulture);
-            case long l:
-                return l.ToString();
-            case int i:
-                return i.ToString();
             default:
                 throw new InvalidOperationException($"Unsupported JSON default literal for type '{type}'. Use 'defaultExpression' instead.");
         }
@@ -150,6 +137,7 @@ public sealed class ModelClassGenerator : IIncrementalGenerator
 
     private static bool IsNullableTypeString(string type)
         => type.Trim().EndsWith("?");
+
     private static bool IsReferenceTypeString(string type)
     {
         var t = type.TrimEnd('?').Trim();
@@ -160,6 +148,7 @@ public sealed class ModelClassGenerator : IIncrementalGenerator
         };
         return !valueTypes.Contains(t) && !t.EndsWith("]", StringComparison.Ordinal);
     }
+
     private static string ToCSharpStringLiteral(string s)
     {
         s = s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", "\\r").Replace("\n", "\\n").Replace("\t", "\\t");
@@ -203,141 +192,4 @@ public sealed class ModelClassGenerator : IIncrementalGenerator
         string Type,
         string Accessibility,
         string? DefaultInitializer);
-}
-
-// Minimal JSON parser for our constrained schema (strings, numbers, bool, null, arrays, objects).
-// Returns C# types: Dictionary<string, object?>, List<object?>, string, double (or long/int), bool, null.
-internal static class MiniJson
-{
-    public static object? Parse(string json) => new Parser(json).ParseValue();
-
-    private sealed class Parser
-    {
-        private readonly string _s;
-        private int _i;
-        public Parser(string s) { _s = s; _i = 0; }
-        public object? ParseValue()
-        {
-            SkipWs();
-            if (_i >= _s.Length) throw Error("Unexpected end of JSON");
-            char c = _s[_i];
-            switch (c)
-            {
-                case '{': return ParseObject();
-                case '[': return ParseArray();
-                case '"': return ParseString();
-                case 't': return ParseTrue();
-                case 'f': return ParseFalse();
-                case 'n': return ParseNull();
-                default: return ParseNumber();
-            }
-        }
-        private Dictionary<string, object?> ParseObject()
-        {
-            Expect('{'); SkipWs();
-            var dict = new Dictionary<string, object?>(StringComparer.Ordinal);
-            if (Peek('}')) { _i++; return dict; }
-            while (true)
-            {
-                SkipWs();
-                string key = ParseString();
-                SkipWs();
-                Expect(':');
-                var val = ParseValue();
-                dict[key] = val;
-                SkipWs();
-                if (Peek('}')) { _i++; break; }
-                Expect(',');
-            }
-            return dict;
-        }
-        private List<object?> ParseArray()
-        {
-            Expect('['); SkipWs();
-            var list = new List<object?>();
-            if (Peek(']')) { _i++; return list; }
-            while (true)
-            {
-                var v = ParseValue();
-                list.Add(v);
-                SkipWs();
-                if (Peek(']')) { _i++; break; }
-                Expect(',');
-            }
-            return list;
-        }
-        private string ParseString()
-        {
-            Expect('"');
-            var sb = new StringBuilder();
-            while (_i < _s.Length)
-            {
-                char c = _s[_i++];
-                if (c == '"') break;
-                if (c == '\\')
-                {
-                    if (_i >= _s.Length) throw Error("Unterminated escape sequence");
-                    char e = _s[_i++];
-                    switch (e)
-                    {
-                        case '"': sb.Append('\"'); break;
-                        case '\\': sb.Append('\\'); break;
-                        case '/': sb.Append('/'); break;
-                        case 'b': sb.Append('\b'); break;
-                        case 'f': sb.Append('\f'); break;
-                        case 'n': sb.Append('\n'); break;
-                        case 'r': sb.Append('\r'); break;
-                        case 't': sb.Append('\t'); break;
-                        case 'u':
-                            if (_i + 4 > _s.Length) throw Error("Invalid unicode escape");
-                            var hex = _s.Substring(_i, 4);
-                            if (!ushort.TryParse(hex, System.Globalization.NumberStyles.HexNumber, null, out var cp))
-                                throw Error("Invalid unicode escape");
-                            sb.Append((char)cp);
-                            _i += 4;
-                            break;
-                        default: throw Error($"Invalid escape '\\{e}'");
-                    }
-                }
-                else
-                {
-                    sb.Append(c);
-                }
-            }
-            return sb.ToString();
-        }
-        private object? ParseNull() { Expect('n'); Expect('u'); Expect('l'); Expect('l'); return null; }
-        private bool ParseTrue() { Expect('t'); Expect('r'); Expect('u'); Expect('e'); return true; }
-        private bool ParseFalse() { Expect('f'); Expect('a'); Expect('l'); Expect('s'); Expect('e'); return false; }
-        private object ParseNumber()
-        {
-            int start = _i;
-            if (Peek('-')) _i++;
-            while (_i < _s.Length && char.IsDigit(_s[_i])) _i++;
-            bool hasFrac = false, hasExp = false;
-            if (Peek('.')) { hasFrac = true; _i++; while (_i < _s.Length && char.IsDigit(_s[_i])) _i++; }
-            if (Peek('e') || Peek('E'))
-            { hasExp = true; _i++; if (Peek('+') || Peek('-')) _i++; while (_i < _s.Length && char.IsDigit(_s[_i])) _i++; }
-            string num = _s.Substring(start, _i - start);
-            if (!hasFrac && !hasExp && long.TryParse(num, out var l))
-            {
-                if (l >= int.MinValue && l <= int.MaxValue) return (int)l;
-                return l;
-            }
-            if (double.TryParse(num, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var d))
-                return d;
-            throw Error($"Invalid number '{num}'");
-        }
-        private void SkipWs()
-        {
-            while (_i < _s.Length && char.IsWhiteSpace(_s[_i])) _i++;
-        }
-        private void Expect(char c)
-        {
-            if (_i >= _s.Length || _s[_i] != c) throw Error($"Expected '{c}'");
-            _i++;
-        }
-        private bool Peek(char c) => _i < _s.Length && _s[_i] == c;
-        private Exception Error(string msg) => new InvalidOperationException($"{msg} at position {_i}");
-    }
 }
