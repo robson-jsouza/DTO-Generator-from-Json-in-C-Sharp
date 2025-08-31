@@ -1,1 +1,1 @@
-# DTO-Generator-from-Json-in-C-Sharp
+# DTO Generator from Json to C# and TypeScript
