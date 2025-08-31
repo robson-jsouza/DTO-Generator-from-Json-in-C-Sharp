@@ -4,7 +4,29 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    
+    <!-- Turn TS generation on/off and where to write files -->
+    <GenerateTsModels>true</GenerateTsModels>
+    
+    <!-- adjust these three paths to your repo layout -->
+    <TsGenProject>$(SolutionDir)ClassFromJson.TsGen\ClassFromJson.TsGen.csproj</TsGenProject>
+    <TsInputDir>$(MSBuildProjectDirectory)\Models</TsInputDir>
+    <TsOutputDir>$(SolutionDir)angular\src\app\models</TsOutputDir>
   </PropertyGroup>
+  
+  <Target Name="GenerateTypeScriptModels" AfterTargets="Build" Condition="'$(GenerateTsModels)'=='true' and Exists('$(TsGenProject)')">
+    <Message Text="Generating TS models: $(TsInputDir) → $(TsOutputDir)" Importance="high" />
+    <MakeDir Directories="$(TsOutputDir)" />
+    <Exec Command="dotnet run --project &quot;$(TsGenProject)&quot; -- --input &quot;$(TsInputDir)&quot; --out &quot;$(TsOutputDir)&quot;" />
+  </Target>
+
+  <!-- Helpful skip message if the path is wrong -->
+  <Target Name="WarnMissingTsGen"
+          AfterTargets="Build"
+          Condition="'$(GenerateTsModels)'=='true' and !Exists('$(TsGenProject)')">
+    <Warning Text="TS generation skipped: TsGen project not found at '$(TsGenProject)'. Adjust the path in the csproj." />
+  </Target>
+  
   <ItemGroup>
     <AdditionalFiles Include="Models\**\*.class.json" />
   </ItemGroup>

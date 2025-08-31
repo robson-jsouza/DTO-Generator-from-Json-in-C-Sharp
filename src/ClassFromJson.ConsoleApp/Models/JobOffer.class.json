@@ -1,0 +1,26 @@
+{
+  "namespace": "MyApp.Models",
+  "class": "JobOffer",
+  "properties": [
+    {
+      "name": "Title",
+      "type": "string"
+    },
+    {
+      "name": "StartDate",
+      "type": "DateTime?"
+    },
+    {
+      "name": "Salary",
+      "type": "decimal"
+    },
+    {
+      "name": "Tags",
+      "type": "List<string>"
+    },
+    {
+      "name": "Address",
+      "type": "Address"
+    }
+  ]
+}
