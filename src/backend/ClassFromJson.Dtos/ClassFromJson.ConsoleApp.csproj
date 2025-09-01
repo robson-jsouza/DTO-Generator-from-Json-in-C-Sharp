@@ -9,9 +9,9 @@
     <GenerateTsModels>true</GenerateTsModels>
     
     <!-- adjust these three paths to your repo layout -->
-    <TsGenProject>$(SolutionDir)ClassFromJson.TsGen\ClassFromJson.TsGen.csproj</TsGenProject>
+    <TsGenProject>$(SolutionDir)src\backend\ClassFromJson.TsGen\ClassFromJson.TsGen.csproj</TsGenProject>
     <TsInputDir>$(MSBuildProjectDirectory)\Models</TsInputDir>
-    <TsOutputDir>$(SolutionDir)angular\src\app\models</TsOutputDir>
+    <TsOutputDir>$(SolutionDir)src\frontend\angular\src\app\models</TsOutputDir>
   </PropertyGroup>
   
   <Target Name="GenerateTypeScriptModels" AfterTargets="Build" Condition="'$(GenerateTsModels)'=='true' and Exists('$(TsGenProject)')">
